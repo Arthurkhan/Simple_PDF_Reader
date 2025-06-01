@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.simplepdf.reader.databinding.ActivityMainBinding
+import com.simplepdf.reader.dialogs.FavoritesDialog
 import com.simplepdf.reader.utils.FavoritesManager
 import com.simplepdf.reader.utils.LockScreenManager
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +54,9 @@ class MainActivity : AppCompatActivity() {
             WindowManager.LayoutParams.FLAG_FULLSCREEN
         )
         
+        // Keep screen on
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        
         setupUI()
         checkInitialIntent()
     }
@@ -76,6 +80,7 @@ class MainActivity : AppCompatActivity() {
             lockScreenManager.enableLockMode()
             toggleMenu()
             updateLockUI(true)
+            Toast.makeText(this, "Lock mode enabled. Double tap home to exit.", Toast.LENGTH_LONG).show()
         }
         
         binding.btnPrevious.setOnClickListener {
@@ -88,8 +93,15 @@ class MainActivity : AppCompatActivity() {
         
         binding.btnAddFavorite.setOnClickListener {
             currentPdfUri?.let { uri ->
-                favoritesManager.addFavorite(uri)
-                Toast.makeText(this, "Added to favorites", Toast.LENGTH_SHORT).show()
+                if (favoritesManager.isFavorite(uri)) {
+                    favoritesManager.removeFavorite(uri)
+                    binding.btnAddFavorite.setImageResource(R.drawable.ic_star_border)
+                    Toast.makeText(this, "Removed from favorites", Toast.LENGTH_SHORT).show()
+                } else {
+                    favoritesManager.addFavorite(uri)
+                    binding.btnAddFavorite.setImageResource(R.drawable.ic_star)
+                    Toast.makeText(this, "Added to favorites", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -106,7 +118,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun updateLockUI(isLocked: Boolean) {
         binding.fabMenu.visibility = if (isLocked) View.GONE else View.VISIBLE
-        binding.btnAddFavorite.visibility = if (isLocked) View.GONE else View.VISIBLE
+        binding.btnAddFavorite.visibility = if (isLocked || currentPdfUri == null) View.GONE else View.VISIBLE
     }
     
     private fun checkInitialIntent() {
@@ -119,22 +131,18 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "application/pdf"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
         startActivityForResult(intent, PICK_PDF_FILE)
     }
     
     private fun showFavorites() {
-        val favorites = favoritesManager.getFavorites()
-        if (favorites.isEmpty()) {
-            Toast.makeText(this, "No favorites yet", Toast.LENGTH_SHORT).show()
-            return
+        val dialog = FavoritesDialog.newInstance()
+        dialog.setOnFavoriteSelectedListener { uri ->
+            loadPdf(uri)
         }
-        
-        // TODO: Show favorites dialog
-        // For now, load the first favorite
-        favorites.firstOrNull()?.let { uri ->
-            loadPdf(Uri.parse(uri))
-        }
+        dialog.show(supportFragmentManager, "favorites")
     }
     
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -142,6 +150,9 @@ class MainActivity : AppCompatActivity() {
         
         if (requestCode == PICK_PDF_FILE && resultCode == Activity.RESULT_OK) {
             data?.data?.let { uri ->
+                // Take persistable permission
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                contentResolver.takePersistableUriPermission(uri, takeFlags)
                 loadPdf(uri)
             }
         }
@@ -155,8 +166,17 @@ class MainActivity : AppCompatActivity() {
                 showPage(0)
                 binding.pdfContainer.visibility = View.VISIBLE
                 binding.emptyView.visibility = View.GONE
+                binding.btnAddFavorite.visibility = View.VISIBLE
+                
+                // Update favorite icon
+                if (favoritesManager.isFavorite(uri)) {
+                    binding.btnAddFavorite.setImageResource(R.drawable.ic_star)
+                } else {
+                    binding.btnAddFavorite.setImageResource(R.drawable.ic_star_border)
+                }
             } catch (e: Exception) {
                 Toast.makeText(this@MainActivity, "Error loading PDF: ${e.message}", Toast.LENGTH_LONG).show()
+                e.printStackTrace()
             }
         }
     }
@@ -182,8 +202,8 @@ class MainActivity : AppCompatActivity() {
                 
                 currentPage?.let { page ->
                     val bitmap = android.graphics.Bitmap.createBitmap(
-                        page.width,
-                        page.height,
+                        page.width * 2,  // Higher resolution
+                        page.height * 2,
                         android.graphics.Bitmap.Config.ARGB_8888
                     )
                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
@@ -202,6 +222,11 @@ class MainActivity : AppCompatActivity() {
     private fun updateNavigationButtons() {
         binding.btnPrevious.isEnabled = currentPageIndex > 0
         binding.btnNext.isEnabled = currentPageIndex < pageCount - 1
+        
+        // Hide navigation for single page PDFs
+        val showNavigation = pageCount > 1
+        binding.btnPrevious.visibility = if (showNavigation) View.VISIBLE else View.INVISIBLE
+        binding.btnNext.visibility = if (showNavigation) View.VISIBLE else View.INVISIBLE
     }
     
     override fun onBackPressed() {
