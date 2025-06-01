@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" />
+        <exclude domain="file" path="internal_cache/" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" />
+        <exclude domain="file" path="internal_cache/" />
+    </device-transfer>
+</data-extraction-rules>
