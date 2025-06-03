@@ -32,9 +32,16 @@ User requested to make PDF links and buttons functional in the app. The current 
 - `app/src/main/res/layout/activity_main.xml` - Replaced RecyclerView with PDFView
 - `app/src/main/java/com/simplepdf/reader/MainActivity.kt` - Complete rewrite of PDF rendering logic
 
-### Files Deleted
-- `app/src/main/java/com/simplepdf/reader/adapters/PdfPagesAdapter.kt` - No longer needed
-- `app/src/main/res/layout/item_pdf_page.xml` - RecyclerView item layout no longer needed
+### Files Marked for Deletion
+- `app/src/main/java/com/simplepdf/reader/adapters/PdfPagesAdapter.kt` - No longer needed (restored temporarily due to build issue)
+- `app/src/main/res/layout/item_pdf_page.xml` - RecyclerView item layout no longer needed (restored temporarily due to build issue)
+
+**Note**: The above files were initially emptied but this caused build errors. They have been restored with minimal content. Please manually delete these files from your local repository after syncing.
+
+### Build Fix
+If you encounter a "Premature end of file" error, sync your project and then manually delete:
+1. `app/src/main/java/com/simplepdf/reader/adapters/PdfPagesAdapter.kt`
+2. `app/src/main/res/layout/item_pdf_page.xml`
 
 ### Testing Notes
 - Test with PDFs containing various link types:
