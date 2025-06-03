@@ -26,6 +26,13 @@ class PdfPagesAdapter : RecyclerView.Adapter<PdfPagesAdapter.PageViewHolder>() {
         val binding = ItemPdfPageBinding.inflate(
             LayoutInflater.from(parent.context), parent, false
         )
+        // Remove any default item spacing
+        binding.root.layoutParams = RecyclerView.LayoutParams(
+            RecyclerView.LayoutParams.MATCH_PARENT,
+            RecyclerView.LayoutParams.WRAP_CONTENT
+        ).apply {
+            setMargins(0, 0, 0, 0)
+        }
         return PageViewHolder(binding)
     }
     
