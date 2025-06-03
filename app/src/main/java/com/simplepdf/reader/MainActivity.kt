@@ -2,39 +2,33 @@ package com.simplepdf.reader
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
-import android.os.ParcelFileDescriptor
-import android.util.DisplayMetrics
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import com.simplepdf.reader.adapters.PdfPagesAdapter
+import com.github.barteksc.pdfviewer.link.LinkHandler
+import com.github.barteksc.pdfviewer.listener.OnErrorListener
+import com.github.barteksc.pdfviewer.listener.OnLoadCompleteListener
+import com.github.barteksc.pdfviewer.listener.OnPageErrorListener
+import com.github.barteksc.pdfviewer.model.LinkTapEvent
 import com.simplepdf.reader.databinding.ActivityMainBinding
 import com.simplepdf.reader.dialogs.FavoritesDialog
 import com.simplepdf.reader.dialogs.TestPdfsDialog
 import com.simplepdf.reader.utils.FavoritesManager
 import com.simplepdf.reader.utils.LockScreenManager
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.math.min
-import kotlin.math.ceil
 
 class MainActivity : AppCompatActivity() {
     
     private lateinit var binding: ActivityMainBinding
     private lateinit var favoritesManager: FavoritesManager
     private lateinit var lockScreenManager: LockScreenManager
-    private lateinit var pdfPagesAdapter: PdfPagesAdapter
     
-    private var pdfRenderer: PdfRenderer? = null
     private var currentPdfUri: Uri? = null
     private var isAssetPdf = false
     private var lastHomePress = 0L
@@ -63,7 +57,6 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
         setupUI()
-        setupRecyclerView()
         checkInitialIntent()
         
         // Enable immersive mode
@@ -85,18 +78,6 @@ class MainActivity : AppCompatActivity() {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             hideSystemUI()
-        }
-    }
-    
-    private fun setupRecyclerView() {
-        pdfPagesAdapter = PdfPagesAdapter()
-        binding.pdfRecyclerView.apply {
-            adapter = pdfPagesAdapter
-            layoutManager = LinearLayoutManager(this@MainActivity)
-            // Remove item animations to prevent gaps during scrolling
-            itemAnimator = null
-            // Optimize for fixed size content
-            setHasFixedSize(false)
         }
     }
     
@@ -213,14 +194,58 @@ class MainActivity : AppCompatActivity() {
                 binding.loadingProgress.visibility = View.VISIBLE
                 binding.emptyView.visibility = View.GONE
                 
-                openPdfRenderer(uri)
-                loadAllPages()
-                
-                // Hide all UI elements when PDF is loaded
-                binding.pdfRecyclerView.visibility = View.VISIBLE
-                binding.loadingProgress.visibility = View.GONE
-                binding.fabMenu.visibility = View.GONE
-                binding.btnAddFavorite.visibility = View.GONE
+                // Load PDF with interactive link support
+                binding.pdfView.fromUri(uri)
+                    .defaultPage(0)
+                    .enableSwipe(true)
+                    .swipeHorizontal(false)
+                    .enableAnnotationRendering(true)
+                    .enableAntialiasing(true)
+                    .spacing(0)
+                    .autoSpacing(true)
+                    .fitEachPage(true)
+                    .pageSnap(false)
+                    .pageFling(false)
+                    .linkHandler(object : LinkHandler {
+                        override fun handleLinkEvent(event: LinkTapEvent) {
+                            val link = event.link
+                            val uri = link.uri
+                            
+                            if (uri != null && uri.isNotEmpty()) {
+                                try {
+                                    // Handle external links
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                                    if (intent.resolveActivity(packageManager) != null) {
+                                        startActivity(intent)
+                                    } else {
+                                        Toast.makeText(this@MainActivity, "No app available to open this link", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(this@MainActivity, "Error opening link: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            } else if (link.destPageIdx != null) {
+                                // Handle internal PDF page links
+                                binding.pdfView.jumpTo(link.destPageIdx)
+                            }
+                        }
+                    })
+                    .onLoad(OnLoadCompleteListener {
+                        // Hide loading and show PDF
+                        binding.loadingProgress.visibility = View.GONE
+                        binding.pdfView.visibility = View.VISIBLE
+                        binding.fabMenu.visibility = View.GONE
+                        binding.btnAddFavorite.visibility = View.GONE
+                    })
+                    .onError(OnErrorListener { throwable ->
+                        binding.loadingProgress.visibility = View.GONE
+                        binding.emptyView.visibility = View.VISIBLE
+                        Toast.makeText(this@MainActivity, "Error loading PDF: ${throwable.message}", Toast.LENGTH_LONG).show()
+                        throwable.printStackTrace()
+                    })
+                    .onPageError(OnPageErrorListener { page, throwable ->
+                        Toast.makeText(this@MainActivity, "Error on page $page: ${throwable.message}", Toast.LENGTH_SHORT).show()
+                    })
+                    .load()
                 
             } catch (e: Exception) {
                 binding.loadingProgress.visibility = View.GONE
@@ -243,82 +268,68 @@ class MainActivity : AppCompatActivity() {
                 
                 // Copy asset to temp file
                 val tempFile = File(cacheDir, "temp_${assetPath.substringAfterLast('/')}")
-                withContext(Dispatchers.IO) {
-                    assets.open(assetPath).use { input ->
-                        FileOutputStream(tempFile).use { output ->
-                            input.copyTo(output)
-                        }
+                assets.open(assetPath).use { input ->
+                    FileOutputStream(tempFile).use { output ->
+                        input.copyTo(output)
                     }
                 }
                 
-                // Open PDF from temp file
-                val uri = Uri.fromFile(tempFile)
-                openPdfRenderer(uri)
-                loadAllPages()
+                // Load PDF from temp file with interactive link support
+                binding.pdfView.fromFile(tempFile)
+                    .defaultPage(0)
+                    .enableSwipe(true)
+                    .swipeHorizontal(false)
+                    .enableAnnotationRendering(true)
+                    .enableAntialiasing(true)
+                    .spacing(0)
+                    .autoSpacing(true)
+                    .fitEachPage(true)
+                    .pageSnap(false)
+                    .pageFling(false)
+                    .linkHandler(object : LinkHandler {
+                        override fun handleLinkEvent(event: LinkTapEvent) {
+                            val link = event.link
+                            val uri = link.uri
+                            
+                            if (uri != null && uri.isNotEmpty()) {
+                                try {
+                                    // Handle external links
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                                    if (intent.resolveActivity(packageManager) != null) {
+                                        startActivity(intent)
+                                    } else {
+                                        Toast.makeText(this@MainActivity, "No app available to open this link", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(this@MainActivity, "Error opening link: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            } else if (link.destPageIdx != null) {
+                                // Handle internal PDF page links
+                                binding.pdfView.jumpTo(link.destPageIdx)
+                            }
+                        }
+                    })
+                    .onLoad(OnLoadCompleteListener {
+                        // Hide loading and show PDF
+                        binding.loadingProgress.visibility = View.GONE
+                        binding.pdfView.visibility = View.VISIBLE
+                        binding.fabMenu.visibility = View.GONE
+                        binding.btnAddFavorite.visibility = View.GONE
+                        Toast.makeText(this@MainActivity, "Loaded test PDF: ${assetPath.substringAfterLast('/')}", Toast.LENGTH_SHORT).show()
+                    })
+                    .onError(OnErrorListener { throwable ->
+                        binding.loadingProgress.visibility = View.GONE
+                        binding.emptyView.visibility = View.VISIBLE
+                        Toast.makeText(this@MainActivity, "Error loading test PDF: ${throwable.message}", Toast.LENGTH_LONG).show()
+                        throwable.printStackTrace()
+                    })
+                    .load()
                 
-                // Hide all UI elements when PDF is loaded
-                binding.pdfRecyclerView.visibility = View.VISIBLE
-                binding.loadingProgress.visibility = View.GONE
-                binding.fabMenu.visibility = View.GONE
-                binding.btnAddFavorite.visibility = View.GONE
-                
-                Toast.makeText(this@MainActivity, "Loaded test PDF: ${assetPath.substringAfterLast('/')}", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 binding.loadingProgress.visibility = View.GONE
                 binding.emptyView.visibility = View.VISIBLE
                 Toast.makeText(this@MainActivity, "Error loading test PDF: ${e.message}", Toast.LENGTH_LONG).show()
                 e.printStackTrace()
-            }
-        }
-    }
-    
-    private suspend fun openPdfRenderer(uri: Uri) = withContext(Dispatchers.IO) {
-        pdfRenderer?.close()
-        
-        val descriptor = if (uri.scheme == "file") {
-            ParcelFileDescriptor.open(File(uri.path!!), ParcelFileDescriptor.MODE_READ_ONLY)
-        } else {
-            contentResolver.openFileDescriptor(uri, "r")
-        }
-        
-        descriptor?.let {
-            pdfRenderer = PdfRenderer(it)
-        }
-    }
-    
-    private suspend fun loadAllPages() = withContext(Dispatchers.IO) {
-        pdfRenderer?.let { renderer ->
-            val pageCount = renderer.pageCount
-            val pages = mutableListOf<android.graphics.Bitmap>()
-            
-            // Get screen width for optimal rendering
-            val displayMetrics = DisplayMetrics()
-            windowManager.defaultDisplay.getMetrics(displayMetrics)
-            val screenWidth = displayMetrics.widthPixels
-            
-            for (i in 0 until pageCount) {
-                val page = renderer.openPage(i)
-                
-                // Calculate render size based on screen width
-                // Add a small buffer (1.1x) to ensure no black edges
-                val scale = (screenWidth.toFloat() * 1.1f) / page.width.toFloat()
-                val renderWidth = ceil(page.width * scale).toInt()
-                val renderHeight = ceil(page.height * scale).toInt()
-                
-                // Create bitmap at calculated size
-                val bitmap = android.graphics.Bitmap.createBitmap(
-                    renderWidth,
-                    renderHeight,
-                    android.graphics.Bitmap.Config.ARGB_8888
-                )
-                
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                page.close()
-                pages.add(bitmap)
-            }
-            
-            withContext(Dispatchers.Main) {
-                pdfPagesAdapter.setPages(pages)
             }
         }
     }
@@ -330,7 +341,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         // If PDF is loaded, close it and show the menu
-        if (binding.pdfRecyclerView.visibility == View.VISIBLE) {
+        if (binding.pdfView.visibility == View.VISIBLE) {
             closePdf()
         } else {
             super.onBackPressed()
@@ -338,15 +349,11 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun closePdf() {
-        // Clear adapter
-        pdfPagesAdapter.clear()
-        
-        // Close PDF renderer
-        pdfRenderer?.close()
-        pdfRenderer = null
+        // Reset PDF view
+        binding.pdfView.recycle()
         
         // Reset UI
-        binding.pdfRecyclerView.visibility = View.GONE
+        binding.pdfView.visibility = View.GONE
         binding.emptyView.visibility = View.VISIBLE
         binding.fabMenu.visibility = View.VISIBLE
         binding.btnAddFavorite.visibility = View.GONE
@@ -373,8 +380,7 @@ class MainActivity : AppCompatActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
-        pdfPagesAdapter.clear()
-        pdfRenderer?.close()
+        binding.pdfView.recycle()
         
         // Clean up temp files
         cacheDir.listFiles()?.forEach { file ->
