@@ -54,35 +54,14 @@ class PdfPagesAdapter : RecyclerView.Adapter<PdfPagesAdapter.PageViewHolder>() {
         fun bind(bitmap: Bitmap) {
             val photoView = binding.pageImageView as PhotoView
             
-            // First set the bitmap
+            // Set the bitmap
             photoView.setImageBitmap(bitmap)
             
-            // Calculate proper zoom levels after the view is laid out
-            photoView.post {
-                // Get the actual displayed dimensions
-                val displayWidth = photoView.width.toFloat()
-                val displayHeight = photoView.height.toFloat()
-                
-                // Get the drawable's intrinsic dimensions (which match bitmap size)
-                val intrinsicWidth = photoView.drawable?.intrinsicWidth?.toFloat() ?: bitmap.width.toFloat()
-                val intrinsicHeight = photoView.drawable?.intrinsicHeight?.toFloat() ?: bitmap.height.toFloat()
-                
-                // Calculate the scale that PhotoView uses internally for fitCenter
-                val widthScale = displayWidth / intrinsicWidth
-                val heightScale = displayHeight / intrinsicHeight
-                val baseScale = minOf(widthScale, heightScale)
-                
-                // Set zoom levels relative to PhotoView's internal scale
-                // For fit-to-width, we want the scale that makes width match exactly
-                val fitWidthScale = widthScale / baseScale
-                
-                photoView.minimumScale = fitWidthScale
-                photoView.mediumScale = fitWidthScale * 1.5f
-                photoView.maximumScale = fitWidthScale * 3f
-                
-                // Set initial scale to fit width
-                photoView.setScale(fitWidthScale, false)
-            }
+            // Let PhotoView handle zoom naturally since we're rendering at screen width
+            // This prevents the overly zoomed in issue
+            photoView.maximumScale = 3.0f
+            photoView.mediumScale = 1.5f
+            photoView.minimumScale = 1.0f
         }
     }
 }
