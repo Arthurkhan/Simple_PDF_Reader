@@ -203,7 +203,6 @@ class MainActivity : AppCompatActivity() {
                     .enableAntialiasing(true)
                     .spacing(0)
                     .autoSpacing(true)
-                    .fitEachPage(true)
                     .pageSnap(false)
                     .pageFling(false)
                     .linkHandler(object : LinkHandler {
@@ -283,7 +282,6 @@ class MainActivity : AppCompatActivity() {
                     .enableAntialiasing(true)
                     .spacing(0)
                     .autoSpacing(true)
-                    .fitEachPage(true)
                     .pageSnap(false)
                     .pageFling(false)
                     .linkHandler(object : LinkHandler {
