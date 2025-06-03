@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.min
+import kotlin.math.ceil
 
 class MainActivity : AppCompatActivity() {
     
@@ -290,7 +291,7 @@ class MainActivity : AppCompatActivity() {
             val pageCount = renderer.pageCount
             val pages = mutableListOf<android.graphics.Bitmap>()
             
-            // Get screen width and density for optimal rendering
+            // Get screen width for optimal rendering
             val displayMetrics = DisplayMetrics()
             windowManager.defaultDisplay.getMetrics(displayMetrics)
             val screenWidth = displayMetrics.widthPixels
@@ -299,10 +300,10 @@ class MainActivity : AppCompatActivity() {
                 val page = renderer.openPage(i)
                 
                 // Calculate render size based on screen width
-                // We want the rendered bitmap width to match screen width for optimal quality
-                val scale = screenWidth.toFloat() / page.width.toFloat()
-                val renderWidth = (page.width * scale).toInt()
-                val renderHeight = (page.height * scale).toInt()
+                // Add a small buffer (1.1x) to ensure no black edges
+                val scale = (screenWidth.toFloat() * 1.1f) / page.width.toFloat()
+                val renderWidth = ceil(page.width * scale).toInt()
+                val renderHeight = ceil(page.height * scale).toInt()
                 
                 // Create bitmap at calculated size
                 val bitmap = android.graphics.Bitmap.createBitmap(
