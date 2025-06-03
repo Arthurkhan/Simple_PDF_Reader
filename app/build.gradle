@@ -48,7 +48,7 @@ dependencies {
     implementation 'androidx.documentfile:documentfile:1.0.1'
     
     // AndroidPdfViewer for interactive PDF support with clickable links
-    implementation 'com.github.barteksc:android-pdf-viewer:2.8.2'
+    implementation 'com.github.barteksc:AndroidPdfViewer:3.1.0-beta.1'
     
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
