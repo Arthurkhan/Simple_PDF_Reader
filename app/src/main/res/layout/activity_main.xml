@@ -121,6 +121,17 @@
         app:layout_constraintEnd_toEndOf="@id/fabMenu" />
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabTestPdfs"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:src="@drawable/ic_test_pdf"
+        android:visibility="gone"
+        app:fabSize="mini"
+        app:layout_constraintBottom_toTopOf="@id/fabFavorites"
+        app:layout_constraintEnd_toEndOf="@id/fabMenu" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fabLock"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -128,7 +139,7 @@
         android:src="@drawable/ic_lock"
         android:visibility="gone"
         app:fabSize="mini"
-        app:layout_constraintBottom_toTopOf="@id/fabFavorites"
+        app:layout_constraintBottom_toTopOf="@id/fabTestPdfs"
         app:layout_constraintEnd_toEndOf="@id/fabMenu" />
 
     <!-- Add to Favorites Button -->
