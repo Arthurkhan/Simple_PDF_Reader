@@ -36,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     private var currentPdfUri: Uri? = null
     private var isAssetPdf = false
     private var lastHomePress = 0L
+    private var navigationVisible = false
     
     companion object {
         private const val PICK_PDF_FILE = 1001
@@ -51,7 +52,7 @@ class MainActivity : AppCompatActivity() {
         favoritesManager = FavoritesManager(this)
         lockScreenManager = LockScreenManager(this)
         
-        // Set fullscreen
+        // Set fullscreen and hide system UI
         window.setFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN
@@ -62,6 +63,27 @@ class MainActivity : AppCompatActivity() {
         
         setupUI()
         checkInitialIntent()
+        
+        // Enable immersive mode
+        hideSystemUI()
+    }
+    
+    private fun hideSystemUI() {
+        window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                )
+    }
+    
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            hideSystemUI()
+        }
     }
     
     private fun setupUI() {
@@ -112,6 +134,18 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        
+        // Add tap listener to PDF to toggle navigation
+        binding.pdfImageView.setOnClickListener {
+            if (pageCount > 1) {
+                toggleNavigationVisibility()
+            }
+        }
+    }
+    
+    private fun toggleNavigationVisibility() {
+        navigationVisible = !navigationVisible
+        binding.navigationControls.visibility = if (navigationVisible) View.VISIBLE else View.GONE
     }
     
     private fun toggleMenu() {
@@ -182,16 +216,15 @@ class MainActivity : AppCompatActivity() {
                 isAssetPdf = false
                 openPdfRenderer(uri)
                 showPage(0)
+                
+                // Hide all UI elements when PDF is loaded
                 binding.pdfContainer.visibility = View.VISIBLE
                 binding.emptyView.visibility = View.GONE
-                binding.btnAddFavorite.visibility = View.VISIBLE
+                binding.fabMenu.visibility = View.GONE
+                binding.btnAddFavorite.visibility = View.GONE
+                binding.navigationControls.visibility = View.GONE
+                navigationVisible = false
                 
-                // Update favorite icon
-                if (favoritesManager.isFavorite(uri)) {
-                    binding.btnAddFavorite.setImageResource(R.drawable.ic_star)
-                } else {
-                    binding.btnAddFavorite.setImageResource(R.drawable.ic_star_border)
-                }
             } catch (e: Exception) {
                 Toast.makeText(this@MainActivity, "Error loading PDF: ${e.message}", Toast.LENGTH_LONG).show()
                 e.printStackTrace()
@@ -219,10 +252,14 @@ class MainActivity : AppCompatActivity() {
                 val uri = Uri.fromFile(tempFile)
                 openPdfRenderer(uri)
                 showPage(0)
+                
+                // Hide all UI elements when PDF is loaded
                 binding.pdfContainer.visibility = View.VISIBLE
                 binding.emptyView.visibility = View.GONE
-                // Hide favorite button for asset PDFs
+                binding.fabMenu.visibility = View.GONE
                 binding.btnAddFavorite.visibility = View.GONE
+                binding.navigationControls.visibility = View.GONE
+                navigationVisible = false
                 
                 Toast.makeText(this@MainActivity, "Loaded test PDF: ${assetPath.substringAfterLast('/')}", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
@@ -268,6 +305,9 @@ class MainActivity : AppCompatActivity() {
                         val photoView = binding.pdfImageView as PhotoView
                         photoView.setImageBitmap(bitmap)
                         
+                        // Set black background
+                        photoView.setBackgroundColor(android.graphics.Color.BLACK)
+                        
                         // Calculate minimum zoom to fill screen
                         photoView.post {
                             val screenWidth = photoView.width.toFloat()
@@ -304,10 +344,11 @@ class MainActivity : AppCompatActivity() {
         binding.btnPrevious.isEnabled = currentPageIndex > 0
         binding.btnNext.isEnabled = currentPageIndex < pageCount - 1
         
-        // Hide navigation for single page PDFs
-        val showNavigation = pageCount > 1
-        binding.btnPrevious.visibility = if (showNavigation) View.VISIBLE else View.INVISIBLE
-        binding.btnNext.visibility = if (showNavigation) View.VISIBLE else View.INVISIBLE
+        // For single page PDFs, don't show navigation at all
+        if (pageCount <= 1) {
+            binding.navigationControls.visibility = View.GONE
+            navigationVisible = false
+        }
     }
     
     override fun onBackPressed() {
@@ -315,7 +356,35 @@ class MainActivity : AppCompatActivity() {
             // In lock mode, do nothing
             return
         }
-        super.onBackPressed()
+        
+        // If PDF is loaded, close it and show the menu
+        if (binding.pdfContainer.visibility == View.VISIBLE) {
+            closePdf()
+        } else {
+            super.onBackPressed()
+        }
+    }
+    
+    private fun closePdf() {
+        // Close PDF renderer
+        currentPage?.close()
+        pdfRenderer?.close()
+        currentPage = null
+        pdfRenderer = null
+        
+        // Reset UI
+        binding.pdfContainer.visibility = View.GONE
+        binding.emptyView.visibility = View.VISIBLE
+        binding.fabMenu.visibility = View.VISIBLE
+        binding.btnAddFavorite.visibility = View.GONE
+        binding.navigationControls.visibility = View.GONE
+        navigationVisible = false
+        
+        // Reset variables
+        currentPdfUri = null
+        isAssetPdf = false
+        currentPageIndex = 0
+        pageCount = 0
     }
     
     override fun onUserLeaveHint() {
