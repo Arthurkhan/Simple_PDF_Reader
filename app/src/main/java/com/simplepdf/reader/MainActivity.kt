@@ -11,6 +11,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.github.chrisbanes.photoview.PhotoView
 import com.simplepdf.reader.databinding.ActivityMainBinding
 import com.simplepdf.reader.dialogs.FavoritesDialog
 import com.simplepdf.reader.utils.FavoritesManager
@@ -209,7 +210,32 @@ class MainActivity : AppCompatActivity() {
                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     
                     withContext(Dispatchers.Main) {
-                        binding.pdfImageView.setImageBitmap(bitmap)
+                        val photoView = binding.pdfImageView as PhotoView
+                        photoView.setImageBitmap(bitmap)
+                        
+                        // Calculate minimum zoom to fill screen
+                        photoView.post {
+                            val screenWidth = photoView.width.toFloat()
+                            val screenHeight = photoView.height.toFloat()
+                            val bitmapWidth = bitmap.width.toFloat()
+                            val bitmapHeight = bitmap.height.toFloat()
+                            
+                            // Calculate scale factors for width and height
+                            val scaleX = screenWidth / bitmapWidth
+                            val scaleY = screenHeight / bitmapHeight
+                            
+                            // Use the larger scale to ensure the PDF fills the entire screen
+                            val minScale = maxOf(scaleX, scaleY)
+                            
+                            // Set minimum, medium, and maximum scale
+                            photoView.minimumScale = minScale
+                            photoView.mediumScale = minScale * 1.5f
+                            photoView.maximumScale = minScale * 3f
+                            
+                            // Set initial scale to fill screen
+                            photoView.setScale(minScale, true)
+                        }
+                        
                         currentPageIndex = index
                         updateNavigationButtons()
                         binding.pageInfo.text = "Page ${index + 1} of $pageCount"
