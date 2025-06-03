@@ -11,7 +11,8 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.github.chrisbanes.photoview.PhotoView
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.simplepdf.reader.adapters.PdfPagesAdapter
 import com.simplepdf.reader.databinding.ActivityMainBinding
 import com.simplepdf.reader.dialogs.FavoritesDialog
 import com.simplepdf.reader.dialogs.TestPdfsDialog
@@ -28,15 +29,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var favoritesManager: FavoritesManager
     private lateinit var lockScreenManager: LockScreenManager
+    private lateinit var pdfPagesAdapter: PdfPagesAdapter
     
     private var pdfRenderer: PdfRenderer? = null
-    private var currentPage: PdfRenderer.Page? = null
-    private var currentPageIndex = 0
-    private var pageCount = 0
     private var currentPdfUri: Uri? = null
     private var isAssetPdf = false
     private var lastHomePress = 0L
-    private var navigationVisible = false
     
     companion object {
         private const val PICK_PDF_FILE = 1001
@@ -62,6 +60,7 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
         setupUI()
+        setupRecyclerView()
         checkInitialIntent()
         
         // Enable immersive mode
@@ -83,6 +82,18 @@ class MainActivity : AppCompatActivity() {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             hideSystemUI()
+        }
+    }
+    
+    private fun setupRecyclerView() {
+        pdfPagesAdapter = PdfPagesAdapter()
+        binding.pdfRecyclerView.apply {
+            adapter = pdfPagesAdapter
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            // Remove item animations to prevent gaps during scrolling
+            itemAnimator = null
+            // Optimize for fixed size content
+            setHasFixedSize(false)
         }
     }
     
@@ -113,14 +124,6 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Lock mode enabled. Double tap home to exit.", Toast.LENGTH_LONG).show()
         }
         
-        binding.btnPrevious.setOnClickListener {
-            showPage(currentPageIndex - 1)
-        }
-        
-        binding.btnNext.setOnClickListener {
-            showPage(currentPageIndex + 1)
-        }
-        
         binding.btnAddFavorite.setOnClickListener {
             currentPdfUri?.let { uri ->
                 if (favoritesManager.isFavorite(uri)) {
@@ -134,18 +137,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        
-        // Add tap listener to PDF to toggle navigation
-        binding.pdfImageView.setOnClickListener {
-            if (pageCount > 1) {
-                toggleNavigationVisibility()
-            }
-        }
-    }
-    
-    private fun toggleNavigationVisibility() {
-        navigationVisible = !navigationVisible
-        binding.navigationControls.visibility = if (navigationVisible) View.VISIBLE else View.GONE
     }
     
     private fun toggleMenu() {
@@ -214,18 +205,23 @@ class MainActivity : AppCompatActivity() {
             try {
                 currentPdfUri = uri
                 isAssetPdf = false
+                
+                // Show loading progress
+                binding.loadingProgress.visibility = View.VISIBLE
+                binding.emptyView.visibility = View.GONE
+                
                 openPdfRenderer(uri)
-                showPage(0)
+                loadAllPages()
                 
                 // Hide all UI elements when PDF is loaded
-                binding.pdfContainer.visibility = View.VISIBLE
-                binding.emptyView.visibility = View.GONE
+                binding.pdfRecyclerView.visibility = View.VISIBLE
+                binding.loadingProgress.visibility = View.GONE
                 binding.fabMenu.visibility = View.GONE
                 binding.btnAddFavorite.visibility = View.GONE
-                binding.navigationControls.visibility = View.GONE
-                navigationVisible = false
                 
             } catch (e: Exception) {
+                binding.loadingProgress.visibility = View.GONE
+                binding.emptyView.visibility = View.VISIBLE
                 Toast.makeText(this@MainActivity, "Error loading PDF: ${e.message}", Toast.LENGTH_LONG).show()
                 e.printStackTrace()
             }
@@ -237,6 +233,10 @@ class MainActivity : AppCompatActivity() {
             try {
                 isAssetPdf = true
                 currentPdfUri = null
+                
+                // Show loading progress
+                binding.loadingProgress.visibility = View.VISIBLE
+                binding.emptyView.visibility = View.GONE
                 
                 // Copy asset to temp file
                 val tempFile = File(cacheDir, "temp_${assetPath.substringAfterLast('/')}")
@@ -251,18 +251,18 @@ class MainActivity : AppCompatActivity() {
                 // Open PDF from temp file
                 val uri = Uri.fromFile(tempFile)
                 openPdfRenderer(uri)
-                showPage(0)
+                loadAllPages()
                 
                 // Hide all UI elements when PDF is loaded
-                binding.pdfContainer.visibility = View.VISIBLE
-                binding.emptyView.visibility = View.GONE
+                binding.pdfRecyclerView.visibility = View.VISIBLE
+                binding.loadingProgress.visibility = View.GONE
                 binding.fabMenu.visibility = View.GONE
                 binding.btnAddFavorite.visibility = View.GONE
-                binding.navigationControls.visibility = View.GONE
-                navigationVisible = false
                 
                 Toast.makeText(this@MainActivity, "Loaded test PDF: ${assetPath.substringAfterLast('/')}", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
+                binding.loadingProgress.visibility = View.GONE
+                binding.emptyView.visibility = View.VISIBLE
                 Toast.makeText(this@MainActivity, "Error loading test PDF: ${e.message}", Toast.LENGTH_LONG).show()
                 e.printStackTrace()
             }
@@ -271,7 +271,6 @@ class MainActivity : AppCompatActivity() {
     
     private suspend fun openPdfRenderer(uri: Uri) = withContext(Dispatchers.IO) {
         pdfRenderer?.close()
-        currentPage?.close()
         
         val descriptor = if (uri.scheme == "file") {
             ParcelFileDescriptor.open(File(uri.path!!), ParcelFileDescriptor.MODE_READ_ONLY)
@@ -281,73 +280,29 @@ class MainActivity : AppCompatActivity() {
         
         descriptor?.let {
             pdfRenderer = PdfRenderer(it)
-            pageCount = pdfRenderer?.pageCount ?: 0
         }
     }
     
-    private fun showPage(index: Int) {
-        if (index < 0 || index >= pageCount) return
-        
-        lifecycleScope.launch {
-            withContext(Dispatchers.IO) {
-                currentPage?.close()
-                currentPage = pdfRenderer?.openPage(index)
-                
-                currentPage?.let { page ->
-                    val bitmap = android.graphics.Bitmap.createBitmap(
-                        page.width * 2,  // Higher resolution
-                        page.height * 2,
-                        android.graphics.Bitmap.Config.ARGB_8888
-                    )
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    
-                    withContext(Dispatchers.Main) {
-                        val photoView = binding.pdfImageView as PhotoView
-                        photoView.setImageBitmap(bitmap)
-                        
-                        // Set black background
-                        photoView.setBackgroundColor(android.graphics.Color.BLACK)
-                        
-                        // Calculate minimum zoom to fill screen
-                        photoView.post {
-                            val screenWidth = photoView.width.toFloat()
-                            val screenHeight = photoView.height.toFloat()
-                            val bitmapWidth = bitmap.width.toFloat()
-                            val bitmapHeight = bitmap.height.toFloat()
-                            
-                            // Calculate scale factors for width and height
-                            val scaleX = screenWidth / bitmapWidth
-                            val scaleY = screenHeight / bitmapHeight
-                            
-                            // Use the larger scale to ensure the PDF fills the entire screen
-                            val minScale = maxOf(scaleX, scaleY)
-                            
-                            // Set minimum, medium, and maximum scale
-                            photoView.minimumScale = minScale
-                            photoView.mediumScale = minScale * 1.5f
-                            photoView.maximumScale = minScale * 3f
-                            
-                            // Set initial scale to fill screen
-                            photoView.setScale(minScale, true)
-                        }
-                        
-                        currentPageIndex = index
-                        updateNavigationButtons()
-                        binding.pageInfo.text = "Page ${index + 1} of $pageCount"
-                    }
-                }
+    private suspend fun loadAllPages() = withContext(Dispatchers.IO) {
+        pdfRenderer?.let { renderer ->
+            val pageCount = renderer.pageCount
+            val pages = mutableListOf<android.graphics.Bitmap>()
+            
+            for (i in 0 until pageCount) {
+                val page = renderer.openPage(i)
+                val bitmap = android.graphics.Bitmap.createBitmap(
+                    page.width * 2,  // Higher resolution
+                    page.height * 2,
+                    android.graphics.Bitmap.Config.ARGB_8888
+                )
+                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                page.close()
+                pages.add(bitmap)
             }
-        }
-    }
-    
-    private fun updateNavigationButtons() {
-        binding.btnPrevious.isEnabled = currentPageIndex > 0
-        binding.btnNext.isEnabled = currentPageIndex < pageCount - 1
-        
-        // For single page PDFs, don't show navigation at all
-        if (pageCount <= 1) {
-            binding.navigationControls.visibility = View.GONE
-            navigationVisible = false
+            
+            withContext(Dispatchers.Main) {
+                pdfPagesAdapter.setPages(pages)
+            }
         }
     }
     
@@ -358,7 +313,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         // If PDF is loaded, close it and show the menu
-        if (binding.pdfContainer.visibility == View.VISIBLE) {
+        if (binding.pdfRecyclerView.visibility == View.VISIBLE) {
             closePdf()
         } else {
             super.onBackPressed()
@@ -366,25 +321,22 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun closePdf() {
+        // Clear adapter
+        pdfPagesAdapter.clear()
+        
         // Close PDF renderer
-        currentPage?.close()
         pdfRenderer?.close()
-        currentPage = null
         pdfRenderer = null
         
         // Reset UI
-        binding.pdfContainer.visibility = View.GONE
+        binding.pdfRecyclerView.visibility = View.GONE
         binding.emptyView.visibility = View.VISIBLE
         binding.fabMenu.visibility = View.VISIBLE
         binding.btnAddFavorite.visibility = View.GONE
-        binding.navigationControls.visibility = View.GONE
-        navigationVisible = false
         
         // Reset variables
         currentPdfUri = null
         isAssetPdf = false
-        currentPageIndex = 0
-        pageCount = 0
     }
     
     override fun onUserLeaveHint() {
@@ -404,7 +356,7 @@ class MainActivity : AppCompatActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
-        currentPage?.close()
+        pdfPagesAdapter.clear()
         pdfRenderer?.close()
         
         // Clean up temp files
