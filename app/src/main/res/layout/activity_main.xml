@@ -36,58 +36,24 @@
 
     </LinearLayout>
 
-    <!-- PDF Container -->
-    <FrameLayout
-        android:id="@+id/pdfContainer"
+    <!-- PDF Container with RecyclerView for continuous scrolling -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/pdfRecyclerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:visibility="gone">
+        android:background="@android:color/black"
+        android:visibility="gone" />
 
-        <com.github.chrisbanes.photoview.PhotoView
-            android:id="@+id/pdfImageView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
-    </FrameLayout>
-
-    <!-- Navigation Controls - Separate from PDF container -->
-    <LinearLayout
-        android:id="@+id/navigationControls"
-        android:layout_width="match_parent"
+    <!-- Loading Progress -->
+    <ProgressBar
+        android:id="@+id/loadingProgress"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="16dp"
         android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="parent">
-
-        <ImageButton
-            android:id="@+id/btnPrevious"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_arrow_back"
-            android:tint="@android:color/white" />
-
-        <TextView
-            android:id="@+id/pageInfo"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:text="Page 1 of 1"
-            android:textColor="@android:color/white"
-            android:textSize="16sp" />
-
-        <ImageButton
-            android:id="@+id/btnNext"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_arrow_forward"
-            android:tint="@android:color/white" />
-
-    </LinearLayout>
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <!-- FAB Menu -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
