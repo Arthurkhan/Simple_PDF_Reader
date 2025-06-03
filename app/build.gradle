@@ -47,8 +47,8 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'
     implementation 'androidx.documentfile:documentfile:1.0.1'
     
-    // PhotoView for zoom functionality
-    implementation 'com.github.chrisbanes:PhotoView:2.3.0'
+    // AndroidPdfViewer for interactive PDF support with clickable links
+    implementation 'com.github.barteksc:android-pdf-viewer:3.2.0-beta.1'
     
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
