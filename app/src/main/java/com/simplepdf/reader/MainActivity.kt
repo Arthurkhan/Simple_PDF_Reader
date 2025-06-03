@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import com.github.chrisbanes.photoview.PhotoView
 import com.simplepdf.reader.databinding.ActivityMainBinding
 import com.simplepdf.reader.dialogs.FavoritesDialog
+import com.simplepdf.reader.dialogs.TestPdfsDialog
 import com.simplepdf.reader.utils.FavoritesManager
 import com.simplepdf.reader.utils.LockScreenManager
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     private var currentPageIndex = 0
     private var pageCount = 0
     private var currentPdfUri: Uri? = null
+    private var isAssetPdf = false
     private var lastHomePress = 0L
     
     companion object {
@@ -77,6 +79,11 @@ class MainActivity : AppCompatActivity() {
             toggleMenu()
         }
         
+        binding.fabTestPdfs.setOnClickListener {
+            showTestPdfs()
+            toggleMenu()
+        }
+        
         binding.fabLock.setOnClickListener {
             lockScreenManager.enableLockMode()
             toggleMenu()
@@ -112,6 +119,7 @@ class MainActivity : AppCompatActivity() {
         
         binding.fabOpenFile.visibility = if (isVisible) View.GONE else View.VISIBLE
         binding.fabFavorites.visibility = if (isVisible) View.GONE else View.VISIBLE
+        binding.fabTestPdfs.visibility = if (isVisible) View.GONE else View.VISIBLE
         binding.fabLock.visibility = if (isVisible) View.GONE else View.VISIBLE
         
         binding.fabMenu.animate().rotation(if (isVisible) 0f else 45f)
@@ -119,7 +127,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun updateLockUI(isLocked: Boolean) {
         binding.fabMenu.visibility = if (isLocked) View.GONE else View.VISIBLE
-        binding.btnAddFavorite.visibility = if (isLocked || currentPdfUri == null) View.GONE else View.VISIBLE
+        binding.btnAddFavorite.visibility = if (isLocked || currentPdfUri == null || isAssetPdf) View.GONE else View.VISIBLE
     }
     
     private fun checkInitialIntent() {
@@ -146,6 +154,14 @@ class MainActivity : AppCompatActivity() {
         dialog.show(supportFragmentManager, "favorites")
     }
     
+    private fun showTestPdfs() {
+        val dialog = TestPdfsDialog.newInstance()
+        dialog.setOnPdfSelectedListener { assetPath ->
+            loadPdfFromAssets(assetPath)
+        }
+        dialog.show(supportFragmentManager, "test_pdfs")
+    }
+    
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         
@@ -163,6 +179,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 currentPdfUri = uri
+                isAssetPdf = false
                 openPdfRenderer(uri)
                 showPage(0)
                 binding.pdfContainer.visibility = View.VISIBLE
@@ -182,11 +199,49 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    private fun loadPdfFromAssets(assetPath: String) {
+        lifecycleScope.launch {
+            try {
+                isAssetPdf = true
+                currentPdfUri = null
+                
+                // Copy asset to temp file
+                val tempFile = File(cacheDir, "temp_${assetPath.substringAfterLast('/')}")
+                withContext(Dispatchers.IO) {
+                    assets.open(assetPath).use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+                
+                // Open PDF from temp file
+                val uri = Uri.fromFile(tempFile)
+                openPdfRenderer(uri)
+                showPage(0)
+                binding.pdfContainer.visibility = View.VISIBLE
+                binding.emptyView.visibility = View.GONE
+                // Hide favorite button for asset PDFs
+                binding.btnAddFavorite.visibility = View.GONE
+                
+                Toast.makeText(this@MainActivity, "Loaded test PDF: ${assetPath.substringAfterLast('/')}", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Error loading test PDF: ${e.message}", Toast.LENGTH_LONG).show()
+                e.printStackTrace()
+            }
+        }
+    }
+    
     private suspend fun openPdfRenderer(uri: Uri) = withContext(Dispatchers.IO) {
         pdfRenderer?.close()
         currentPage?.close()
         
-        val descriptor = contentResolver.openFileDescriptor(uri, "r")
+        val descriptor = if (uri.scheme == "file") {
+            ParcelFileDescriptor.open(File(uri.path!!), ParcelFileDescriptor.MODE_READ_ONLY)
+        } else {
+            contentResolver.openFileDescriptor(uri, "r")
+        }
+        
         descriptor?.let {
             pdfRenderer = PdfRenderer(it)
             pageCount = pdfRenderer?.pageCount ?: 0
@@ -282,5 +337,12 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         currentPage?.close()
         pdfRenderer?.close()
+        
+        // Clean up temp files
+        cacheDir.listFiles()?.forEach { file ->
+            if (file.name.startsWith("temp_") && file.name.endsWith(".pdf")) {
+                file.delete()
+            }
+        }
     }
 }
