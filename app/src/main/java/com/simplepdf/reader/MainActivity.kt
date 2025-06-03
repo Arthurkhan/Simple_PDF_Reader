@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.WindowInsetsController
 import android.widget.Toast
@@ -39,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private var lastHomePress = 0L
     
     companion object {
+        private const val TAG = "PDFReader"
         private const val DOUBLE_TAP_DELAY = 500L
     }
     
@@ -46,16 +48,25 @@ class MainActivity : AppCompatActivity() {
     private val pdfPickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
+        Log.d(TAG, "PDF picker result: $uri")
         uri?.let {
-            // Take persistable permission
-            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-            contentResolver.takePersistableUriPermission(it, takeFlags)
-            loadPdf(it)
+            try {
+                // Take persistable permission
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                contentResolver.takePersistableUriPermission(it, takeFlags)
+                Log.d(TAG, "Took persistable permission for URI: $it")
+                loadPdf(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error taking persistable permission", e)
+                Toast.makeText(this, "Error accessing file: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "onCreate")
+        
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
@@ -75,6 +86,32 @@ class MainActivity : AppCompatActivity() {
         
         // Enable immersive mode
         hideSystemUI()
+        
+        // Update UI state
+        updateUIForNoContent()
+    }
+    
+    private fun updateUIForNoContent() {
+        binding.emptyView.visibility = View.VISIBLE
+        binding.pdfView.visibility = View.GONE
+        binding.fabMenu.visibility = View.VISIBLE
+        binding.btnAddFavorite.visibility = View.GONE
+    }
+    
+    private fun updateUIForContent() {
+        binding.emptyView.visibility = View.GONE
+        binding.pdfView.visibility = View.VISIBLE
+        
+        // Update favorite button
+        currentPdfUri?.let { uri ->
+            if (!isAssetPdf) {
+                binding.btnAddFavorite.visibility = View.VISIBLE
+                binding.btnAddFavorite.setImageResource(
+                    if (favoritesManager.isFavorite(uri)) R.drawable.ic_star 
+                    else R.drawable.ic_star_border
+                )
+            }
+        }
     }
     
     private fun hideSystemUI() {
@@ -174,17 +211,20 @@ class MainActivity : AppCompatActivity() {
     
     private fun checkInitialIntent() {
         intent?.data?.let { uri ->
+            Log.d(TAG, "Initial intent URI: $uri")
             loadPdf(uri)
         }
     }
     
     private fun openFilePicker() {
+        Log.d(TAG, "Opening file picker")
         pdfPickerLauncher.launch(arrayOf("application/pdf"))
     }
     
     private fun showFavorites() {
         val dialog = FavoritesDialog.newInstance()
         dialog.setOnFavoriteSelectedListener { uri ->
+            Log.d(TAG, "Selected favorite: $uri")
             loadPdf(uri)
         }
         dialog.show(supportFragmentManager, "favorites")
@@ -193,12 +233,15 @@ class MainActivity : AppCompatActivity() {
     private fun showTestPdfs() {
         val dialog = TestPdfsDialog.newInstance()
         dialog.setOnPdfSelectedListener { assetPath ->
+            Log.d(TAG, "Selected test PDF: $assetPath")
             loadPdfFromAssets(assetPath)
         }
         dialog.show(supportFragmentManager, "test_pdfs")
     }
     
     private fun loadPdf(uri: Uri) {
+        Log.d(TAG, "Loading PDF from URI: $uri")
+        
         lifecycleScope.launch {
             try {
                 currentPdfUri = uri
@@ -207,6 +250,8 @@ class MainActivity : AppCompatActivity() {
                 // Show loading progress
                 binding.loadingProgress.visibility = View.VISIBLE
                 binding.emptyView.visibility = View.GONE
+                
+                Log.d(TAG, "Starting PDF load...")
                 
                 // Load PDF with interactive link support
                 binding.pdfView.fromUri(uri)
@@ -242,34 +287,45 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     })
-                    .onLoad(OnLoadCompleteListener {
+                    .onLoad(OnLoadCompleteListener { nbPages ->
+                        Log.d(TAG, "PDF loaded successfully. Pages: $nbPages")
                         // Hide loading and show PDF
                         binding.loadingProgress.visibility = View.GONE
-                        binding.pdfView.visibility = View.VISIBLE
-                        binding.fabMenu.visibility = View.GONE
-                        binding.btnAddFavorite.visibility = View.GONE
+                        updateUIForContent()
+                        Toast.makeText(this@MainActivity, "PDF loaded successfully", Toast.LENGTH_SHORT).show()
                     })
                     .onError(OnErrorListener { throwable ->
+                        Log.e(TAG, "Error loading PDF", throwable)
                         binding.loadingProgress.visibility = View.GONE
-                        binding.emptyView.visibility = View.VISIBLE
-                        Toast.makeText(this@MainActivity, "Error loading PDF: ${throwable.message}", Toast.LENGTH_LONG).show()
-                        throwable.printStackTrace()
+                        updateUIForNoContent()
+                        val errorMsg = when {
+                            throwable.message?.contains("Permission") == true -> 
+                                "Permission denied. Please grant storage permission."
+                            throwable.message?.contains("FileNotFound") == true -> 
+                                "PDF file not found."
+                            else -> 
+                                "Error loading PDF: ${throwable.message}"
+                        }
+                        Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
                     })
                     .onPageError(OnPageErrorListener { page, throwable ->
+                        Log.e(TAG, "Error on page $page", throwable)
                         Toast.makeText(this@MainActivity, "Error on page $page: ${throwable.message}", Toast.LENGTH_SHORT).show()
                     })
                     .load()
                 
             } catch (e: Exception) {
+                Log.e(TAG, "Exception in loadPdf", e)
                 binding.loadingProgress.visibility = View.GONE
-                binding.emptyView.visibility = View.VISIBLE
+                updateUIForNoContent()
                 Toast.makeText(this@MainActivity, "Error loading PDF: ${e.message}", Toast.LENGTH_LONG).show()
-                e.printStackTrace()
             }
         }
     }
     
     private fun loadPdfFromAssets(assetPath: String) {
+        Log.d(TAG, "Loading PDF from assets: $assetPath")
+        
         lifecycleScope.launch {
             try {
                 isAssetPdf = true
@@ -279,13 +335,24 @@ class MainActivity : AppCompatActivity() {
                 binding.loadingProgress.visibility = View.VISIBLE
                 binding.emptyView.visibility = View.GONE
                 
+                // Check if asset exists
+                val assetFiles = assets.list(assetPath.substringBeforeLast('/'))
+                val fileName = assetPath.substringAfterLast('/')
+                if (assetFiles?.contains(fileName) != true) {
+                    throw Exception("Asset file not found: $assetPath")
+                }
+                
                 // Copy asset to temp file
                 val tempFile = File(cacheDir, "temp_${assetPath.substringAfterLast('/')}")
+                Log.d(TAG, "Copying asset to temp file: ${tempFile.absolutePath}")
+                
                 assets.open(assetPath).use { input ->
                     FileOutputStream(tempFile).use { output ->
                         input.copyTo(output)
                     }
                 }
+                
+                Log.d(TAG, "Asset copied, loading PDF...")
                 
                 // Load PDF from temp file with interactive link support
                 binding.pdfView.fromFile(tempFile)
@@ -321,40 +388,38 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     })
-                    .onLoad(OnLoadCompleteListener {
+                    .onLoad(OnLoadCompleteListener { nbPages ->
+                        Log.d(TAG, "Test PDF loaded successfully. Pages: $nbPages")
                         // Hide loading and show PDF
                         binding.loadingProgress.visibility = View.GONE
-                        binding.pdfView.visibility = View.VISIBLE
-                        binding.fabMenu.visibility = View.GONE
-                        binding.btnAddFavorite.visibility = View.GONE
+                        updateUIForContent()
                         Toast.makeText(this@MainActivity, "Loaded test PDF: ${assetPath.substringAfterLast('/')}", Toast.LENGTH_SHORT).show()
                     })
                     .onError(OnErrorListener { throwable ->
+                        Log.e(TAG, "Error loading test PDF", throwable)
                         binding.loadingProgress.visibility = View.GONE
-                        binding.emptyView.visibility = View.VISIBLE
+                        updateUIForNoContent()
                         Toast.makeText(this@MainActivity, "Error loading test PDF: ${throwable.message}", Toast.LENGTH_LONG).show()
-                        throwable.printStackTrace()
                     })
                     .load()
                 
             } catch (e: Exception) {
+                Log.e(TAG, "Exception in loadPdfFromAssets", e)
                 binding.loadingProgress.visibility = View.GONE
-                binding.emptyView.visibility = View.VISIBLE
+                updateUIForNoContent()
                 Toast.makeText(this@MainActivity, "Error loading test PDF: ${e.message}", Toast.LENGTH_LONG).show()
-                e.printStackTrace()
             }
         }
     }
     
     private fun closePdf() {
+        Log.d(TAG, "Closing PDF")
+        
         // Reset PDF view
         binding.pdfView.recycle()
         
         // Reset UI
-        binding.pdfView.visibility = View.GONE
-        binding.emptyView.visibility = View.VISIBLE
-        binding.fabMenu.visibility = View.VISIBLE
-        binding.btnAddFavorite.visibility = View.GONE
+        updateUIForNoContent()
         
         // Reset variables
         currentPdfUri = null
@@ -378,6 +443,7 @@ class MainActivity : AppCompatActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "onDestroy")
         binding.pdfView.recycle()
         
         // Clean up temp files
