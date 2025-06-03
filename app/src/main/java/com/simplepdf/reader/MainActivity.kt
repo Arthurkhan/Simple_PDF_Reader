@@ -6,6 +6,7 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.util.DisplayMetrics
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
@@ -23,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.min
 
 class MainActivity : AppCompatActivity() {
     
@@ -288,13 +290,27 @@ class MainActivity : AppCompatActivity() {
             val pageCount = renderer.pageCount
             val pages = mutableListOf<android.graphics.Bitmap>()
             
+            // Get screen width and density for optimal rendering
+            val displayMetrics = DisplayMetrics()
+            windowManager.defaultDisplay.getMetrics(displayMetrics)
+            val screenWidth = displayMetrics.widthPixels
+            
             for (i in 0 until pageCount) {
                 val page = renderer.openPage(i)
+                
+                // Calculate render size based on screen width
+                // We want the rendered bitmap width to match screen width for optimal quality
+                val scale = screenWidth.toFloat() / page.width.toFloat()
+                val renderWidth = (page.width * scale).toInt()
+                val renderHeight = (page.height * scale).toInt()
+                
+                // Create bitmap at calculated size
                 val bitmap = android.graphics.Bitmap.createBitmap(
-                    page.width * 2,  // Higher resolution
-                    page.height * 2,
+                    renderWidth,
+                    renderHeight,
                     android.graphics.Bitmap.Config.ARGB_8888
                 )
+                
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 page.close()
                 pages.add(bitmap)
