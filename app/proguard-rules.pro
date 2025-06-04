@@ -2,8 +2,23 @@
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
 
+# Kotlin
+-dontwarn kotlin.**
+-keep class kotlin.Metadata { *; }
+
+# Coroutines
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+-keepclassmembers class kotlinx.coroutines.** {
+    volatile <fields>;
+}
+
 # Keep PDF rendering classes
 -keep class android.graphics.pdf.** { *; }
+
+# AndroidPdfViewer library (temporary - will be removed after migration)
+-keep class com.shockwave.**
+-keep class com.github.barteksc.pdfviewer.** { *; }
 
 # Keep app classes
 -keep class com.simplepdf.reader.** { *; }
@@ -14,3 +29,20 @@
 
 # Material Components
 -keep class com.google.android.material.** { *; }
+
+# Lifecycle
+-keepclassmembers class * extends androidx.lifecycle.ViewModel {
+    <init>(...);
+}
+-keepclassmembers class * extends androidx.lifecycle.AndroidViewModel {
+    <init>(...);
+}
+
+# Remove logging in release builds
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+    public static *** i(...);
+    public static *** w(...);
+    public static *** e(...);
+}
