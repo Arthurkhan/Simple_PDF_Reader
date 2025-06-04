@@ -15,17 +15,17 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
-import com.github.barteksc.pdfviewer.link.LinkHandler
 import com.github.barteksc.pdfviewer.listener.OnErrorListener
 import com.github.barteksc.pdfviewer.listener.OnLoadCompleteListener
 import com.github.barteksc.pdfviewer.listener.OnPageErrorListener
-import com.github.barteksc.pdfviewer.model.LinkTapEvent
 import com.simplepdf.reader.databinding.ActivityMainBinding
 import com.simplepdf.reader.dialogs.FavoritesDialog
 import com.simplepdf.reader.dialogs.TestPdfsDialog
 import com.simplepdf.reader.utils.FavoritesManager
 import com.simplepdf.reader.utils.LockScreenManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
@@ -248,77 +248,60 @@ class MainActivity : AppCompatActivity() {
                 isAssetPdf = false
                 
                 // Show loading progress
-                binding.loadingProgress.visibility = View.VISIBLE
-                binding.emptyView.visibility = View.GONE
+                withContext(Dispatchers.Main) {
+                    binding.loadingProgress.visibility = View.VISIBLE
+                    binding.emptyView.visibility = View.GONE
+                }
                 
                 Log.d(TAG, "Starting PDF load...")
                 
-                // Load PDF with interactive link support
-                binding.pdfView.fromUri(uri)
-                    .defaultPage(0)
-                    .enableSwipe(true)
-                    .swipeHorizontal(false)
-                    .enableAnnotationRendering(true)
-                    .enableAntialiasing(true)
-                    .spacing(0)
-                    .autoSpacing(true)
-                    .pageSnap(false)
-                    .pageFling(false)
-                    .linkHandler(object : LinkHandler {
-                        override fun handleLinkEvent(event: LinkTapEvent) {
-                            val link = event.link
-                            val linkUri = link.uri
+                // Simplified PDF loading configuration
+                withContext(Dispatchers.Main) {
+                    binding.pdfView.fromUri(uri)
+                        .defaultPage(0)
+                        .enableSwipe(true)
+                        .swipeHorizontal(false)
+                        .enableAnnotationRendering(false) // Simplified - disable annotations
+                        .spacing(0)
+                        .onLoad(OnLoadCompleteListener { nbPages ->
+                            Log.d(TAG, "PDF loaded successfully. Pages: $nbPages")
+                            // Hide loading and show PDF
+                            binding.loadingProgress.visibility = View.GONE
+                            updateUIForContent()
+                            Toast.makeText(this@MainActivity, "PDF loaded successfully ($nbPages pages)", Toast.LENGTH_SHORT).show()
+                        })
+                        .onError(OnErrorListener { throwable ->
+                            Log.e(TAG, "Error loading PDF: ${throwable.message}", throwable)
+                            binding.loadingProgress.visibility = View.GONE
+                            updateUIForNoContent()
                             
-                            if (linkUri != null && linkUri.isNotEmpty()) {
-                                try {
-                                    // Handle external links
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(linkUri))
-                                    if (intent.resolveActivity(packageManager) != null) {
-                                        startActivity(intent)
-                                    } else {
-                                        Toast.makeText(this@MainActivity, "No app available to open this link", Toast.LENGTH_SHORT).show()
-                                    }
-                                } catch (e: Exception) {
-                                    Toast.makeText(this@MainActivity, "Error opening link: ${e.message}", Toast.LENGTH_SHORT).show()
-                                }
-                            } else if (link.destPageIdx != null) {
-                                // Handle internal PDF page links
-                                binding.pdfView.jumpTo(link.destPageIdx)
+                            val errorMsg = when {
+                                throwable.message?.contains("Permission", ignoreCase = true) == true -> 
+                                    "Permission denied. Please grant storage permission."
+                                throwable.message?.contains("FileNotFound", ignoreCase = true) == true || 
+                                throwable.message?.contains("No such file", ignoreCase = true) == true -> 
+                                    "PDF file not found. The file may have been moved or deleted."
+                                throwable.message?.contains("IOException", ignoreCase = true) == true -> 
+                                    "Error reading PDF file. The file may be corrupted."
+                                else -> 
+                                    "Error loading PDF: ${throwable.javaClass.simpleName} - ${throwable.message}"
                             }
-                        }
-                    })
-                    .onLoad(OnLoadCompleteListener { nbPages ->
-                        Log.d(TAG, "PDF loaded successfully. Pages: $nbPages")
-                        // Hide loading and show PDF
-                        binding.loadingProgress.visibility = View.GONE
-                        updateUIForContent()
-                        Toast.makeText(this@MainActivity, "PDF loaded successfully", Toast.LENGTH_SHORT).show()
-                    })
-                    .onError(OnErrorListener { throwable ->
-                        Log.e(TAG, "Error loading PDF", throwable)
-                        binding.loadingProgress.visibility = View.GONE
-                        updateUIForNoContent()
-                        val errorMsg = when {
-                            throwable.message?.contains("Permission") == true -> 
-                                "Permission denied. Please grant storage permission."
-                            throwable.message?.contains("FileNotFound") == true -> 
-                                "PDF file not found."
-                            else -> 
-                                "Error loading PDF: ${throwable.message}"
-                        }
-                        Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
-                    })
-                    .onPageError(OnPageErrorListener { page, throwable ->
-                        Log.e(TAG, "Error on page $page", throwable)
-                        Toast.makeText(this@MainActivity, "Error on page $page: ${throwable.message}", Toast.LENGTH_SHORT).show()
-                    })
-                    .load()
+                            
+                            Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
+                        })
+                        .onPageError(OnPageErrorListener { page, throwable ->
+                            Log.e(TAG, "Error on page $page: ${throwable.message}", throwable)
+                        })
+                        .load()
+                }
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Exception in loadPdf", e)
-                binding.loadingProgress.visibility = View.GONE
-                updateUIForNoContent()
-                Toast.makeText(this@MainActivity, "Error loading PDF: ${e.message}", Toast.LENGTH_LONG).show()
+                Log.e(TAG, "Exception in loadPdf: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    binding.loadingProgress.visibility = View.GONE
+                    updateUIForNoContent()
+                    Toast.makeText(this@MainActivity, "Error loading PDF: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -332,82 +315,56 @@ class MainActivity : AppCompatActivity() {
                 currentPdfUri = null
                 
                 // Show loading progress
-                binding.loadingProgress.visibility = View.VISIBLE
-                binding.emptyView.visibility = View.GONE
-                
-                // Check if asset exists
-                val assetFiles = assets.list(assetPath.substringBeforeLast('/'))
-                val fileName = assetPath.substringAfterLast('/')
-                if (assetFiles?.contains(fileName) != true) {
-                    throw Exception("Asset file not found: $assetPath")
+                withContext(Dispatchers.Main) {
+                    binding.loadingProgress.visibility = View.VISIBLE
+                    binding.emptyView.visibility = View.GONE
                 }
                 
-                // Copy asset to temp file
-                val tempFile = File(cacheDir, "temp_${assetPath.substringAfterLast('/')}")
-                Log.d(TAG, "Copying asset to temp file: ${tempFile.absolutePath}")
-                
-                assets.open(assetPath).use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                
-                Log.d(TAG, "Asset copied, loading PDF...")
-                
-                // Load PDF from temp file with interactive link support
-                binding.pdfView.fromFile(tempFile)
-                    .defaultPage(0)
-                    .enableSwipe(true)
-                    .swipeHorizontal(false)
-                    .enableAnnotationRendering(true)
-                    .enableAntialiasing(true)
-                    .spacing(0)
-                    .autoSpacing(true)
-                    .pageSnap(false)
-                    .pageFling(false)
-                    .linkHandler(object : LinkHandler {
-                        override fun handleLinkEvent(event: LinkTapEvent) {
-                            val link = event.link
-                            val linkUri = link.uri
-                            
-                            if (linkUri != null && linkUri.isNotEmpty()) {
-                                try {
-                                    // Handle external links
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(linkUri))
-                                    if (intent.resolveActivity(packageManager) != null) {
-                                        startActivity(intent)
-                                    } else {
-                                        Toast.makeText(this@MainActivity, "No app available to open this link", Toast.LENGTH_SHORT).show()
-                                    }
-                                } catch (e: Exception) {
-                                    Toast.makeText(this@MainActivity, "Error opening link: ${e.message}", Toast.LENGTH_SHORT).show()
-                                }
-                            } else if (link.destPageIdx != null) {
-                                // Handle internal PDF page links
-                                binding.pdfView.jumpTo(link.destPageIdx)
-                            }
+                // Copy asset to temp file in IO context
+                val tempFile = withContext(Dispatchers.IO) {
+                    val file = File(cacheDir, "temp_${assetPath.substringAfterLast('/')}")
+                    Log.d(TAG, "Copying asset to temp file: ${file.absolutePath}")
+                    
+                    assets.open(assetPath).use { input ->
+                        FileOutputStream(file).use { output ->
+                            input.copyTo(output)
                         }
-                    })
-                    .onLoad(OnLoadCompleteListener { nbPages ->
-                        Log.d(TAG, "Test PDF loaded successfully. Pages: $nbPages")
-                        // Hide loading and show PDF
-                        binding.loadingProgress.visibility = View.GONE
-                        updateUIForContent()
-                        Toast.makeText(this@MainActivity, "Loaded test PDF: ${assetPath.substringAfterLast('/')}", Toast.LENGTH_SHORT).show()
-                    })
-                    .onError(OnErrorListener { throwable ->
-                        Log.e(TAG, "Error loading test PDF", throwable)
-                        binding.loadingProgress.visibility = View.GONE
-                        updateUIForNoContent()
-                        Toast.makeText(this@MainActivity, "Error loading test PDF: ${throwable.message}", Toast.LENGTH_LONG).show()
-                    })
-                    .load()
+                    }
+                    file
+                }
+                
+                Log.d(TAG, "Asset copied, loading PDF from: ${tempFile.absolutePath}")
+                
+                // Simplified PDF loading from file
+                withContext(Dispatchers.Main) {
+                    binding.pdfView.fromFile(tempFile)
+                        .defaultPage(0)
+                        .enableSwipe(true)
+                        .swipeHorizontal(false)
+                        .enableAnnotationRendering(false) // Simplified
+                        .spacing(0)
+                        .onLoad(OnLoadCompleteListener { nbPages ->
+                            Log.d(TAG, "Test PDF loaded successfully. Pages: $nbPages")
+                            binding.loadingProgress.visibility = View.GONE
+                            updateUIForContent()
+                            Toast.makeText(this@MainActivity, "Loaded: ${assetPath.substringAfterLast('/')} ($nbPages pages)", Toast.LENGTH_SHORT).show()
+                        })
+                        .onError(OnErrorListener { throwable ->
+                            Log.e(TAG, "Error loading test PDF: ${throwable.message}", throwable)
+                            binding.loadingProgress.visibility = View.GONE
+                            updateUIForNoContent()
+                            Toast.makeText(this@MainActivity, "Error: ${throwable.message}", Toast.LENGTH_LONG).show()
+                        })
+                        .load()
+                }
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Exception in loadPdfFromAssets", e)
-                binding.loadingProgress.visibility = View.GONE
-                updateUIForNoContent()
-                Toast.makeText(this@MainActivity, "Error loading test PDF: ${e.message}", Toast.LENGTH_LONG).show()
+                Log.e(TAG, "Exception in loadPdfFromAssets: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    binding.loadingProgress.visibility = View.GONE
+                    updateUIForNoContent()
+                    Toast.makeText(this@MainActivity, "Error loading test PDF: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
