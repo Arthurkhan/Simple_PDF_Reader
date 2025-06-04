@@ -14,7 +14,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.github.barteksc.pdfviewer.listener.OnErrorListener
 import com.github.barteksc.pdfviewer.listener.OnLoadCompleteListener
 import com.github.barteksc.pdfviewer.listener.OnPageErrorListener
@@ -31,9 +35,10 @@ import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
     
-    private lateinit var binding: ActivityMainBinding
-    private lateinit var favoritesManager: FavoritesManager
-    private lateinit var lockScreenManager: LockScreenManager
+    // Using lazy initialization for better performance
+    private val binding by lazy { ActivityMainBinding.inflate(layoutInflater) }
+    private val favoritesManager by lazy { FavoritesManager(this) }
+    private val lockScreenManager by lazy { LockScreenManager(this) }
     
     private var currentPdfUri: Uri? = null
     private var isAssetPdf = false
@@ -67,18 +72,26 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate")
         
-        binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        
-        // Initialize managers
-        favoritesManager = FavoritesManager(this)
-        lockScreenManager = LockScreenManager(this)
         
         // Modern fullscreen approach
         WindowCompat.setDecorFitsSystemWindows(window, false)
         
         // Keep screen on
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        
+        // Add lifecycle observer for better UI management
+        lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onResume(owner: LifecycleOwner) {
+                hideSystemUI()
+            }
+            
+            override fun onDestroy(owner: LifecycleOwner) {
+                // Clean up resources
+                binding.pdfView.recycle()
+                cleanupTempFiles()
+            }
+        })
         
         setupUI()
         setupBackPressHandler()
@@ -242,65 +255,68 @@ class MainActivity : AppCompatActivity() {
     private fun loadPdf(uri: Uri) {
         Log.d(TAG, "Loading PDF from URI: $uri")
         
+        // Use repeatOnLifecycle for better lifecycle handling
         lifecycleScope.launch {
-            try {
-                currentPdfUri = uri
-                isAssetPdf = false
-                
-                // Show loading progress
-                withContext(Dispatchers.Main) {
-                    binding.loadingProgress.visibility = View.VISIBLE
-                    binding.emptyView.visibility = View.GONE
-                }
-                
-                Log.d(TAG, "Starting PDF load...")
-                
-                // Simplified PDF loading configuration
-                withContext(Dispatchers.Main) {
-                    binding.pdfView.fromUri(uri)
-                        .defaultPage(0)
-                        .enableSwipe(true)
-                        .swipeHorizontal(false)
-                        .enableAnnotationRendering(false) // Simplified - disable annotations
-                        .spacing(0)
-                        .onLoad(OnLoadCompleteListener { nbPages ->
-                            Log.d(TAG, "PDF loaded successfully. Pages: $nbPages")
-                            // Hide loading and show PDF
-                            binding.loadingProgress.visibility = View.GONE
-                            updateUIForContent()
-                            Toast.makeText(this@MainActivity, "PDF loaded successfully ($nbPages pages)", Toast.LENGTH_SHORT).show()
-                        })
-                        .onError(OnErrorListener { throwable ->
-                            Log.e(TAG, "Error loading PDF: ${throwable.message}", throwable)
-                            binding.loadingProgress.visibility = View.GONE
-                            updateUIForNoContent()
-                            
-                            val errorMsg = when {
-                                throwable.message?.contains("Permission", ignoreCase = true) == true -> 
-                                    "Permission denied. Please grant storage permission."
-                                throwable.message?.contains("FileNotFound", ignoreCase = true) == true || 
-                                throwable.message?.contains("No such file", ignoreCase = true) == true -> 
-                                    "PDF file not found. The file may have been moved or deleted."
-                                throwable.message?.contains("IOException", ignoreCase = true) == true -> 
-                                    "Error reading PDF file. The file may be corrupted."
-                                else -> 
-                                    "Error loading PDF: ${throwable.javaClass.simpleName} - ${throwable.message}"
-                            }
-                            
-                            Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
-                        })
-                        .onPageError(OnPageErrorListener { page, throwable ->
-                            Log.e(TAG, "Error on page $page: ${throwable.message}", throwable)
-                        })
-                        .load()
-                }
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "Exception in loadPdf: ${e.message}", e)
-                withContext(Dispatchers.Main) {
-                    binding.loadingProgress.visibility = View.GONE
-                    updateUIForNoContent()
-                    Toast.makeText(this@MainActivity, "Error loading PDF: ${e.message}", Toast.LENGTH_LONG).show()
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                try {
+                    currentPdfUri = uri
+                    isAssetPdf = false
+                    
+                    // Show loading progress
+                    withContext(Dispatchers.Main) {
+                        binding.loadingProgress.visibility = View.VISIBLE
+                        binding.emptyView.visibility = View.GONE
+                    }
+                    
+                    Log.d(TAG, "Starting PDF load...")
+                    
+                    // Simplified PDF loading configuration
+                    withContext(Dispatchers.Main) {
+                        binding.pdfView.fromUri(uri)
+                            .defaultPage(0)
+                            .enableSwipe(true)
+                            .swipeHorizontal(false)
+                            .enableAnnotationRendering(false) // Simplified - disable annotations
+                            .spacing(0)
+                            .onLoad(OnLoadCompleteListener { nbPages ->
+                                Log.d(TAG, "PDF loaded successfully. Pages: $nbPages")
+                                // Hide loading and show PDF
+                                binding.loadingProgress.visibility = View.GONE
+                                updateUIForContent()
+                                Toast.makeText(this@MainActivity, "PDF loaded successfully ($nbPages pages)", Toast.LENGTH_SHORT).show()
+                            })
+                            .onError(OnErrorListener { throwable ->
+                                Log.e(TAG, "Error loading PDF: ${throwable.message}", throwable)
+                                binding.loadingProgress.visibility = View.GONE
+                                updateUIForNoContent()
+                                
+                                val errorMsg = when {
+                                    throwable.message?.contains("Permission", ignoreCase = true) == true -> 
+                                        "Permission denied. Please grant storage permission."
+                                    throwable.message?.contains("FileNotFound", ignoreCase = true) == true || 
+                                    throwable.message?.contains("No such file", ignoreCase = true) == true -> 
+                                        "PDF file not found. The file may have been moved or deleted."
+                                    throwable.message?.contains("IOException", ignoreCase = true) == true -> 
+                                        "Error reading PDF file. The file may be corrupted."
+                                    else -> 
+                                        "Error loading PDF: ${throwable.javaClass.simpleName} - ${throwable.message}"
+                                }
+                                
+                                Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
+                            })
+                            .onPageError(OnPageErrorListener { page, throwable ->
+                                Log.e(TAG, "Error on page $page: ${throwable.message}", throwable)
+                            })
+                            .load()
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "Exception in loadPdf: ${e.message}", e)
+                    withContext(Dispatchers.Main) {
+                        binding.loadingProgress.visibility = View.GONE
+                        updateUIForNoContent()
+                        Toast.makeText(this@MainActivity, "Error loading PDF: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }
@@ -398,12 +414,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    override fun onDestroy() {
-        super.onDestroy()
-        Log.d(TAG, "onDestroy")
-        binding.pdfView.recycle()
-        
-        // Clean up temp files
+    private fun cleanupTempFiles() {
         cacheDir.listFiles()?.forEach { file ->
             if (file.name.startsWith("temp_") && file.name.endsWith(".pdf")) {
                 file.delete()
