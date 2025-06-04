@@ -1,0 +1,58 @@
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+processors:
+  active: true
+
+console-reports:
+  active: true
+
+complexity:
+  active: true
+  LongMethod:
+    threshold: 60
+  ComplexMethod:
+    threshold: 15
+  TooManyFunctions:
+    thresholdInFiles: 20
+    thresholdInClasses: 20
+  LongParameterList:
+    functionThreshold: 6
+    constructorThreshold: 7
+
+style:
+  active: true
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    maxLineLength: 120
+  WildcardImport:
+    active: true
+  FunctionNaming:
+    functionPattern: '^([a-z$][a-zA-Z$0-9]*)|(`.*`)$'
+  VariableNaming:
+    variablePattern: '[a-z][A-Za-z0-9]*'
+    privateVariablePattern: '(_)?[a-z][A-Za-z0-9]*'
+
+naming:
+  active: true
+  ClassNaming:
+    classPattern: '[A-Z$][a-zA-Z0-9$]*'
+  PackageNaming:
+    packagePattern: '^[a-z]+(\.[a-z][A-Za-z0-9]*)*$'
+
+performance:
+  active: true
+  SpreadOperator:
+    active: true
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    active: true
+    exceptionNames:
+      - Error
+      - Exception
+      - Throwable
+      - RuntimeException
