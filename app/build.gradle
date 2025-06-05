@@ -63,8 +63,12 @@ dependencies {
     // Document handling
     implementation 'androidx.documentfile:documentfile:1.0.1'
     
-    // PDF Viewer (temporary - will be replaced in Phase 1.2)
-    implementation 'com.github.barteksc:android-pdf-viewer:3.2.0-beta.1'
+    // PDF Viewer - REMOVED heavy library, using native Android PdfRenderer instead
+    // OLD: implementation 'com.github.barteksc:android-pdf-viewer:3.2.0-beta.1'
+    // We'll use Android's native PdfRenderer wrapped in our own implementation
+    
+    // RecyclerView for PDF page display
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
     
     // Testing
     testImplementation 'junit:junit:4.13.2'
