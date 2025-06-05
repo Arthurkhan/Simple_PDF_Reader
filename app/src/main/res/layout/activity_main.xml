@@ -36,8 +36,8 @@
 
     </LinearLayout>
 
-    <!-- PDF View with interactive support -->
-    <com.github.barteksc.pdfviewer.PDFView
+    <!-- PDF View using our custom implementation -->
+    <com.simplepdf.reader.ui.PdfView
         android:id="@+id/pdfView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
