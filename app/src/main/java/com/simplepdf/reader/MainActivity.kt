@@ -19,9 +19,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.github.barteksc.pdfviewer.listener.OnErrorListener
-import com.github.barteksc.pdfviewer.listener.OnLoadCompleteListener
-import com.github.barteksc.pdfviewer.listener.OnPageErrorListener
 import com.simplepdf.reader.databinding.ActivityMainBinding
 import com.simplepdf.reader.dialogs.FavoritesDialog
 import com.simplepdf.reader.dialogs.TestPdfsDialog
@@ -255,71 +252,50 @@ class MainActivity : AppCompatActivity() {
     private fun loadPdf(uri: Uri) {
         Log.d(TAG, "Loading PDF from URI: $uri")
         
-        // Use repeatOnLifecycle for better lifecycle handling
-        lifecycleScope.launch {
-            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                try {
-                    currentPdfUri = uri
-                    isAssetPdf = false
-                    
-                    // Show loading progress
-                    withContext(Dispatchers.Main) {
-                        binding.loadingProgress.visibility = View.VISIBLE
-                        binding.emptyView.visibility = View.GONE
-                    }
-                    
-                    Log.d(TAG, "Starting PDF load...")
-                    
-                    // Simplified PDF loading configuration
-                    withContext(Dispatchers.Main) {
-                        binding.pdfView.fromUri(uri)
-                            .defaultPage(0)
-                            .enableSwipe(true)
-                            .swipeHorizontal(false)
-                            .enableAnnotationRendering(false) // Simplified - disable annotations
-                            .spacing(0)
-                            .onLoad(OnLoadCompleteListener { nbPages ->
-                                Log.d(TAG, "PDF loaded successfully. Pages: $nbPages")
-                                // Hide loading and show PDF
-                                binding.loadingProgress.visibility = View.GONE
-                                updateUIForContent()
-                                Toast.makeText(this@MainActivity, "PDF loaded successfully ($nbPages pages)", Toast.LENGTH_SHORT).show()
-                            })
-                            .onError(OnErrorListener { throwable ->
-                                Log.e(TAG, "Error loading PDF: ${throwable.message}", throwable)
-                                binding.loadingProgress.visibility = View.GONE
-                                updateUIForNoContent()
-                                
-                                val errorMsg = when {
-                                    throwable.message?.contains("Permission", ignoreCase = true) == true -> 
-                                        "Permission denied. Please grant storage permission."
-                                    throwable.message?.contains("FileNotFound", ignoreCase = true) == true || 
-                                    throwable.message?.contains("No such file", ignoreCase = true) == true -> 
-                                        "PDF file not found. The file may have been moved or deleted."
-                                    throwable.message?.contains("IOException", ignoreCase = true) == true -> 
-                                        "Error reading PDF file. The file may be corrupted."
-                                    else -> 
-                                        "Error loading PDF: ${throwable.javaClass.simpleName} - ${throwable.message}"
-                                }
-                                
-                                Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
-                            })
-                            .onPageError(OnPageErrorListener { page, throwable ->
-                                Log.e(TAG, "Error on page $page: ${throwable.message}", throwable)
-                            })
-                            .load()
-                    }
-                    
-                } catch (e: Exception) {
-                    Log.e(TAG, "Exception in loadPdf: ${e.message}", e)
-                    withContext(Dispatchers.Main) {
-                        binding.loadingProgress.visibility = View.GONE
-                        updateUIForNoContent()
-                        Toast.makeText(this@MainActivity, "Error loading PDF: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
+        currentPdfUri = uri
+        isAssetPdf = false
+        
+        // Show loading progress
+        binding.loadingProgress.visibility = View.VISIBLE
+        binding.emptyView.visibility = View.GONE
+        
+        // Load PDF using our custom view
+        binding.pdfView.fromUri(uri)
+            .defaultPage(0)
+            .enableSwipe(true)
+            .swipeHorizontal(false)
+            .enableAnnotationRendering(false)
+            .spacing(0)
+            .onLoad { nbPages ->
+                Log.d(TAG, "PDF loaded successfully. Pages: $nbPages")
+                // Hide loading and show PDF
+                binding.loadingProgress.visibility = View.GONE
+                updateUIForContent()
+                Toast.makeText(this@MainActivity, "PDF loaded successfully ($nbPages pages)", Toast.LENGTH_SHORT).show()
             }
-        }
+            .onError { throwable ->
+                Log.e(TAG, "Error loading PDF: ${throwable.message}", throwable)
+                binding.loadingProgress.visibility = View.GONE
+                updateUIForNoContent()
+                
+                val errorMsg = when {
+                    throwable.message?.contains("Permission", ignoreCase = true) == true -> 
+                        "Permission denied. Please grant storage permission."
+                    throwable.message?.contains("FileNotFound", ignoreCase = true) == true || 
+                    throwable.message?.contains("No such file", ignoreCase = true) == true -> 
+                        "PDF file not found. The file may have been moved or deleted."
+                    throwable.message?.contains("IOException", ignoreCase = true) == true -> 
+                        "Error reading PDF file. The file may be corrupted."
+                    else -> 
+                        "Error loading PDF: ${throwable.javaClass.simpleName} - ${throwable.message}"
+                }
+                
+                Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
+            }
+            .onPageError { page, throwable ->
+                Log.e(TAG, "Error on page $page: ${throwable.message}", throwable)
+            }
+            .load()
     }
     
     private fun loadPdfFromAssets(assetPath: String) {
@@ -351,26 +327,26 @@ class MainActivity : AppCompatActivity() {
                 
                 Log.d(TAG, "Asset copied, loading PDF from: ${tempFile.absolutePath}")
                 
-                // Simplified PDF loading from file
+                // Load PDF from file
                 withContext(Dispatchers.Main) {
                     binding.pdfView.fromFile(tempFile)
                         .defaultPage(0)
                         .enableSwipe(true)
                         .swipeHorizontal(false)
-                        .enableAnnotationRendering(false) // Simplified
+                        .enableAnnotationRendering(false)
                         .spacing(0)
-                        .onLoad(OnLoadCompleteListener { nbPages ->
+                        .onLoad { nbPages ->
                             Log.d(TAG, "Test PDF loaded successfully. Pages: $nbPages")
                             binding.loadingProgress.visibility = View.GONE
                             updateUIForContent()
                             Toast.makeText(this@MainActivity, "Loaded: ${assetPath.substringAfterLast('/')} ($nbPages pages)", Toast.LENGTH_SHORT).show()
-                        })
-                        .onError(OnErrorListener { throwable ->
+                        }
+                        .onError { throwable ->
                             Log.e(TAG, "Error loading test PDF: ${throwable.message}", throwable)
                             binding.loadingProgress.visibility = View.GONE
                             updateUIForNoContent()
                             Toast.makeText(this@MainActivity, "Error: ${throwable.message}", Toast.LENGTH_LONG).show()
-                        })
+                        }
                         .load()
                 }
                 
