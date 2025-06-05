@@ -13,12 +13,8 @@
     volatile <fields>;
 }
 
-# Keep PDF rendering classes
+# Keep PDF rendering classes (Android native)
 -keep class android.graphics.pdf.** { *; }
-
-# AndroidPdfViewer library (temporary - will be removed after migration)
--keep class com.shockwave.**
--keep class com.github.barteksc.pdfviewer.** { *; }
 
 # Keep app classes
 -keep class com.simplepdf.reader.** { *; }
@@ -29,6 +25,9 @@
 
 # Material Components
 -keep class com.google.android.material.** { *; }
+
+# RecyclerView
+-keep class androidx.recyclerview.widget.** { *; }
 
 # Lifecycle
 -keepclassmembers class * extends androidx.lifecycle.ViewModel {
